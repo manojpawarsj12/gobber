@@ -20,8 +20,8 @@ var client = &http.Client{
 	Transport: transport,
 }
 
-func NpmRegistry(packageName string) (PackageData, error) {
-	respBody, err := NpmGetBytes(packageName + "/latest")
+func NpmRegistry(packageName *string) (PackageData, error) {
+	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s/%s", NPM_REGISTRY, *packageName, "latest"))
 	if err != nil {
 		return PackageData{}, fmt.Errorf("Error in NpmRegistry: %v", err)
 	}
@@ -35,8 +35,8 @@ func NpmRegistry(packageName string) (PackageData, error) {
 	return packageData, nil
 }
 
-func NpmRegistryVersionData(packageName string) (VersionsData, error) {
-	respBody, err := NpmGetBytes(packageName)
+func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
+	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s", NPM_REGISTRY, *packageName))
 	if err != nil {
 		return VersionsData{}, fmt.Errorf("Error in NpmRegistryVersionData: %v", err)
 	}
@@ -51,8 +51,8 @@ func NpmRegistryVersionData(packageName string) (VersionsData, error) {
 }
 
 func NpmGetBytes(route string) (io.ReadCloser, error) {
-	url := fmt.Sprintf("%s/%s", NPM_REGISTRY, route)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	fmt.Println(route)
+	req, err := http.NewRequest(http.MethodGet, route, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating HTTP request in NpmGetBytes: %v", err)
 	}
@@ -63,6 +63,6 @@ func NpmGetBytes(route string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("Error making HTTP request in NpmGetBytes: %v", err)
 	}
 
-	fmt.Printf("Response code for package %s is %d\n", url, resp.StatusCode)
+	fmt.Printf("Response code for package %s is %d\n", route, resp.StatusCode)
 	return resp.Body, nil
 }

@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	command_handler "gobber/src"
 	"os"
+
+	gobber "github.com/manojpawarsj12/gobber/src"
 )
 
 func main() {
@@ -12,5 +13,6 @@ func main() {
 		fmt.Println("Available commands: install")
 		os.Exit(1)
 	}
-	command_handler.ParseCommands()
+	gobber.ParseCommands()
+
 }
