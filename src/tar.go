@@ -7,14 +7,20 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
-func ExtractTarGz(gzipStream io.Reader) {
+var wgTar sync.WaitGroup
 
+func Extract(tarball_url *string, packageDestDir *string) {
+	wgTar.Add(1)
+	go ExtractTar(tarball_url, packageDestDir)
+	wgTar.Wait()
 }
 
-func ExtractTar(tarball_url string, packageDestDir string) {
-	tarRes, err := NpmGetBytes(tarball_url)
+func ExtractTar(tarball_url *string, packageDestDir *string) {
+	defer wgTar.Done()
+	tarRes, err := NpmGetBytes(*tarball_url)
 	if err != nil {
 		log.Fatalf("Error ExtractTar requesting tar url: %v", err)
 	}
@@ -37,12 +43,12 @@ func ExtractTar(tarball_url string, packageDestDir string) {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			dirPath := filepath.Join(packageDestDir, header.Name)
+			dirPath := filepath.Join(*packageDestDir, header.Name)
 			if err := os.Mkdir(dirPath, 0755); err != nil {
 				log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
 			}
 		case tar.TypeReg:
-			outFilePath := filepath.Join(packageDestDir, header.Name)
+			outFilePath := filepath.Join(*packageDestDir, header.Name)
 			if err := os.MkdirAll(filepath.Dir(outFilePath), 0755); err != nil {
 				log.Fatalf("ExtractTarGz: MkdirAll() failed: %s", err.Error())
 			}

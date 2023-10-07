@@ -5,10 +5,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
 var v Versions
+var wg sync.WaitGroup
+var mut sync.Mutex
 
 func GetPackageData(packageDetails *PackageDetails) PackageData {
 	version := v.resolveFullVersion(packageDetails.Comparator)
@@ -32,27 +35,28 @@ func GetPackageData(packageDetails *PackageDetails) PackageData {
 		return versionData.Versions[version]
 	}
 }
-func checkIsInstalled(name string, version string, InstalledVersionsMutex map[string]string) bool {
-	packageData := InstalledVersionsMutex[name]
+func checkIsInstalled(name string, version string, InstalledVersionsMutex *map[string]string) bool {
+	packageData := (*InstalledVersionsMutex)[name]
 	return packageData == version
 }
-func InstallPackage(packageData PackageData, InstalledVersionsMutex map[string]string) {
+
+func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, cacheDir *string) {
+	defer wg.Done()
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex) {
 		log.Printf("Installed %s \n", packageData.Name)
 		return
 	}
 	log.Println("installing !!!!!", packageData.Name)
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		log.Fatalf("Error InstallPackage getting cache dir: %v", err)
-	}
-	packageDestDir := filepath.Join(cacheDir, "node_cache", packageData.Name, packageData.Version)
+	packageDestDir := filepath.Join(*cacheDir, "node_cache", packageData.Name, packageData.Version)
 	log.Println("Dir for installing packages !!! ", packageDestDir)
 	if err := os.MkdirAll(packageDestDir, 0755); err != nil {
 		log.Printf("InstallPackage: Mkdir() failed: %s", err.Error())
 	}
 	tarballUrl := packageData.Dist.Tarball
-	ExtractTar(tarballUrl, packageDestDir)
+	go Extract(&tarballUrl, &packageDestDir)
+	mut.Lock()
+	(*InstalledVersionsMutex)[packageData.Name] = packageData.Version
+	mut.Unlock()
 	deps := packageData.Dependencies
 	log.Println("Deps for installing packages !!! ", packageData.Name, deps)
 	for name, version := range deps {
@@ -63,7 +67,8 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex map[string]s
 		}
 		packageDetails := PackageDetails{Name: name, Comparator: comparator}
 		packageData := GetPackageData(&packageDetails)
-		InstallPackage(packageData, InstalledVersionsMutex)
+		wg.Add(1)
+		InstallPackage(packageData, InstalledVersionsMutex, cacheDir)
 	}
 }
 
@@ -78,9 +83,16 @@ func Parse(packageData string) (*PackageDetails, error) {
 func Execute(packageDetails *PackageDetails) {
 	start := time.Now()
 	log.Println("installing !!!!!", packageDetails.Name, packageDetails.Comparator)
-	var InstalledVersionsMutex map[string]string
+	var InstalledVersionsMutex = make(map[string]string)
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		log.Fatalf("Error InstallPackage getting cache dir: %v", err)
+	}
 	packageData := GetPackageData(packageDetails)
-	InstallPackage(packageData, InstalledVersionsMutex)
+	wg.Add(1)
+	go InstallPackage(packageData, &InstalledVersionsMutex, &cacheDir)
+	wg.Wait()
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
+	log.Println("Installed total packages: ", len(InstalledVersionsMutex))
 }
