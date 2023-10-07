@@ -66,7 +66,7 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 		packageDetails := PackageDetails{Name: name, Comparator: comparator}
 		packageData := GetPackageData(&packageDetails)
 		wg.Add(1)
-		InstallPackage(packageData, InstalledVersionsMutex, cacheDir, wg, mut)
+		go InstallPackage(packageData, InstalledVersionsMutex, cacheDir, wg, mut)
 	}
 }
 

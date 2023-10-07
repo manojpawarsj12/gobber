@@ -14,12 +14,14 @@ var wgTar sync.WaitGroup
 
 func Extract(tarball_url *string, packageDestDir *string) {
 	wgTar.Add(1)
-	go ExtractTar(tarball_url, packageDestDir)
+	go func() {
+		defer wgTar.Done()
+		ExtractTar(tarball_url, packageDestDir)
+	}()
 	wgTar.Wait()
 }
 
 func ExtractTar(tarball_url *string, packageDestDir *string) {
-	defer wgTar.Done()
 	tarRes, err := NpmGetBytes(*tarball_url)
 	if err != nil {
 		log.Fatalf("Error ExtractTar requesting tar url: %v", err)
