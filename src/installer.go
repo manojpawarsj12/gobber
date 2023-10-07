@@ -10,8 +10,6 @@ import (
 )
 
 var v Versions
-var wg sync.WaitGroup
-var mut sync.Mutex
 
 func GetPackageData(packageDetails *PackageDetails) PackageData {
 	version := v.resolveFullVersion(packageDetails.Comparator)
@@ -40,7 +38,7 @@ func checkIsInstalled(name string, version string, InstalledVersionsMutex *map[s
 	return packageData == version
 }
 
-func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, cacheDir *string) {
+func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, cacheDir *string, wg *sync.WaitGroup, mut *sync.Mutex) {
 	defer wg.Done()
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex) {
 		log.Printf("Installed %s \n", packageData.Name)
@@ -68,7 +66,7 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 		packageDetails := PackageDetails{Name: name, Comparator: comparator}
 		packageData := GetPackageData(&packageDetails)
 		wg.Add(1)
-		InstallPackage(packageData, InstalledVersionsMutex, cacheDir)
+		InstallPackage(packageData, InstalledVersionsMutex, cacheDir, wg, mut)
 	}
 }
 
@@ -82,6 +80,8 @@ func Parse(packageData string) (*PackageDetails, error) {
 }
 func Execute(packageDetails *PackageDetails) {
 	start := time.Now()
+	var wg sync.WaitGroup
+	var mut sync.Mutex
 	log.Println("installing !!!!!", packageDetails.Name, packageDetails.Comparator)
 	var InstalledVersionsMutex = make(map[string]string)
 	cacheDir, err := os.UserCacheDir()
@@ -90,7 +90,7 @@ func Execute(packageDetails *PackageDetails) {
 	}
 	packageData := GetPackageData(packageDetails)
 	wg.Add(1)
-	go InstallPackage(packageData, &InstalledVersionsMutex, &cacheDir)
+	go InstallPackage(packageData, &InstalledVersionsMutex, &cacheDir, &wg, &mut)
 	wg.Wait()
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
