@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	gobber "github.com/manojpawarsj12/gobber/src"
@@ -9,8 +9,8 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: gobber [command]")
-		fmt.Println("Available commands: install")
+		log.Println("Usage: gobber [command]")
+		log.Println("Available commands: install")
 		os.Exit(1)
 	}
 	gobber.ParseCommands()

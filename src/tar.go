@@ -3,7 +3,6 @@ package gobber
 import (
 	"archive/tar"
 	"compress/gzip"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -17,14 +16,12 @@ func ExtractTarGz(gzipStream io.Reader) {
 func ExtractTar(tarball_url string, packageDestDir string) {
 	tarRes, err := NpmGetBytes(tarball_url)
 	if err != nil {
-		fmt.Println(fmt.Errorf("Error ExtractTar requesting tar url: %v", err))
-		panic(err)
+		log.Fatalf("Error ExtractTar requesting tar url: %v", err)
 	}
 
 	uncompressedStream, err := gzip.NewReader(tarRes)
 	if err != nil {
-		fmt.Println(fmt.Errorf("Error ExtractTarGz: NewReader failed: %v", err))
-		panic(err)
+		log.Fatalf("Error ExtractTarGz: NewReader failed: %v", err)
 	}
 	tarReader := tar.NewReader(uncompressedStream)
 
@@ -36,7 +33,7 @@ func ExtractTar(tarball_url string, packageDestDir string) {
 		}
 
 		if err != nil {
-			fmt.Println(fmt.Errorf("Error ExtractTarGz:  Next() failed: %v", err))
+			log.Fatalf("Error ExtractTarGz:  Next() failed: %v", err)
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:

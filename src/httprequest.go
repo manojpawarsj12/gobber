@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -23,13 +24,15 @@ var client = &http.Client{
 func NpmRegistry(packageName *string) (PackageData, error) {
 	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s/%s", NPM_REGISTRY, *packageName, "latest"))
 	if err != nil {
-		return PackageData{}, fmt.Errorf("Error in NpmRegistry: %v", err)
+		log.Println("Error in NpmRegistry: %v", err)
+		return PackageData{}, err
 	}
 
 	var packageData PackageData
 	err = json.NewDecoder(respBody).Decode(&packageData)
 	if err != nil {
-		return PackageData{}, fmt.Errorf("Error decoding JSON in NpmRegistry: %v", err)
+		log.Println("Error decoding JSON in NpmRegistry: %v", err.Error())
+		return PackageData{}, err
 	}
 
 	return packageData, nil
@@ -38,13 +41,15 @@ func NpmRegistry(packageName *string) (PackageData, error) {
 func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
 	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s", NPM_REGISTRY, *packageName))
 	if err != nil {
-		return VersionsData{}, fmt.Errorf("Error in NpmRegistryVersionData: %v", err)
+		log.Printf("Error in NpmRegistryVersionData: %v", err)
+		return VersionsData{}, err
 	}
 
 	var versionsData VersionsData
 	err = json.NewDecoder(respBody).Decode(&versionsData)
 	if err != nil {
-		return VersionsData{}, fmt.Errorf("Error decoding JSON in NpmRegistryVersionData: %v", err)
+		log.Printf("Error decoding JSON in NpmRegistryVersionData: %v", err)
+		return VersionsData{}, err
 	}
 
 	return versionsData, nil
@@ -53,13 +58,15 @@ func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
 func NpmGetBytes(route string) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, route, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating HTTP request in NpmGetBytes: %v", err)
+		log.Println("Error creating HTTP request in NpmGetBytes: %v", err)
+		return nil, err
 	}
 	req.Header.Add("Accept", "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Error making HTTP request in NpmGetBytes: %v", err)
+		log.Println("Error making HTTP request in NpmGetBytes: %v", err)
+		return nil, err
 	}
-	fmt.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
+	log.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
 	return resp.Body, nil
 }
