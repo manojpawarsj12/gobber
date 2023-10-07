@@ -51,18 +51,15 @@ func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
 }
 
 func NpmGetBytes(route string) (io.ReadCloser, error) {
-	fmt.Println(route)
 	req, err := http.NewRequest(http.MethodGet, route, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating HTTP request in NpmGetBytes: %v", err)
 	}
-
 	req.Header.Add("Accept", "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Error making HTTP request in NpmGetBytes: %v", err)
 	}
-
-	fmt.Printf("Response code for package %s is %d\n", route, resp.StatusCode)
+	fmt.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
 	return resp.Body, nil
 }

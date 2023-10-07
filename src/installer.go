@@ -35,28 +35,28 @@ func GetPackageData(packageDetails *PackageDetails) PackageData {
 }
 func checkIsInstalled(name string, version string, InstalledVersionsMutex map[string]string) bool {
 	packageData := InstalledVersionsMutex[name]
-	if packageData == version {
-		return true
-	}
-	return false
+	return packageData == version
 }
 func InstallPackage(packageData PackageData, InstalledVersionsMutex map[string]string) {
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex) {
+		fmt.Printf("Installed %s \n", packageData.Name)
 		return
 	}
+	fmt.Println("installing !!!!!", packageData.Name)
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		fmt.Println(fmt.Errorf("Error InstallPackage getting cache dir: %v", err))
 		panic(err)
 	}
 	packageDestDir := filepath.Join(cacheDir, "node_cache", packageData.Name, packageData.Version)
-	fmt.Println("Dir for installing packages !!! ", packageDestDir, cacheDir)
-	if err := os.Mkdir(packageDestDir, 0755); err != nil {
+	fmt.Println("Dir for installing packages !!! ", packageDestDir)
+	if err := os.MkdirAll(packageDestDir, 0755); err != nil {
 		log.Fatalf("InstallPackage: Mkdir() failed: %s", err.Error())
 	}
 	tarballUrl := packageData.Dist.Tarball
 	ExtractTar(tarballUrl, packageDestDir)
 	deps := packageData.Dependencies
+	fmt.Println("Deps for installing packages !!! ", deps)
 	for name, version := range deps {
 		comparator, err := v.parseSemanticVersion(version)
 		if err != nil {
@@ -66,8 +66,8 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex map[string]s
 		packageDetails := PackageDetails{Name: name, Comparator: comparator}
 		packageData := GetPackageData(&packageDetails)
 		InstallPackage(packageData, InstalledVersionsMutex)
-		return
 	}
+	return
 }
 
 func Parse(packageData string) (*PackageDetails, error) {

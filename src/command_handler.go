@@ -22,10 +22,7 @@ func ParseCommands() {
 
 func installPackage(packageName string) {
 	fmt.Printf("Installing package: %s\n", packageName)
-	npmData, _ := NpmRegistry(&packageName)
 	packageDetails, _ := Parse(packageName)
 	Execute(packageDetails)
-	// npmVersionData, _ := NpmRegistryVersionData(&packageName)
-
-	fmt.Println(npmData)
+	// npmVersionData, _ := NpmRegistryVersionData(&packageName)}
 }

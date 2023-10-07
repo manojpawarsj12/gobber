@@ -28,7 +28,7 @@ func ExtractTar(tarball_url string, packageDestDir string) {
 	}
 	tarReader := tar.NewReader(uncompressedStream)
 
-	for true {
+	for {
 		header, err := tarReader.Next()
 
 		if err == io.EOF {
@@ -46,6 +46,9 @@ func ExtractTar(tarball_url string, packageDestDir string) {
 			}
 		case tar.TypeReg:
 			outFilePath := filepath.Join(packageDestDir, header.Name)
+			if err := os.MkdirAll(filepath.Dir(outFilePath), 0755); err != nil {
+				log.Fatalf("ExtractTarGz: MkdirAll() failed: %s", err.Error())
+			}
 			outFile, err := os.Create(outFilePath)
 			if err != nil {
 				log.Fatalf("ExtractTarGz: Create() failed: %s", err.Error())
