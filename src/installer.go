@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 var v Versions
@@ -57,8 +56,7 @@ func ancestorInstalled(name string, projectDir string, InstalledVersionsMutex *m
 
 	return false
 }
-func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
+func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex) {
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex, mut) {
 		log.Printf("Installed %s \n", packageData.Name)
 		return
@@ -105,8 +103,7 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 			packageDetails := PackageDetails{Name: name, Comparator: comparator}
 			depPackageData := GetPackageData(&packageDetails)
 			// Install dependencies recursively inside the packageDestDir
-			wg.Add(1)
-			InstallPackage(depPackageData, InstalledVersionsMutex, packageDestDir, mut, wg)
+			InstallPackage(depPackageData, InstalledVersionsMutex, packageDestDir, mut)
 		}(name, version)
 	}
 	// Wait for dependency installation to complete
@@ -124,17 +121,8 @@ func Parse(packageData string) (*PackageDetails, error) {
 	}
 	return packageDetails, nil
 }
-func Execute(packageDetails *PackageDetails) {
-	start := time.Now()
-	var mut sync.Mutex
-	var wg sync.WaitGroup
-	var InstalledVersionsMutex = make(map[string]string)
-	wd, _ := os.Getwd()
+func Execute(packageDetails *PackageDetails, wg *sync.WaitGroup, mut *sync.Mutex, InstalledVersionsMutex *map[string]string, projectDir string) {
+	defer wg.Done()
 	packageData := GetPackageData(packageDetails)
-	wg.Add(1)
-	go InstallPackage(packageData, &InstalledVersionsMutex, wd, &mut, &wg)
-	wg.Wait()
-	elapsed := time.Since(start)
-	log.Printf("Took %s", elapsed)
-	log.Println("Installed total packages: ", len(InstalledVersionsMutex))
+	InstallPackage(packageData, InstalledVersionsMutex, projectDir, mut)
 }
