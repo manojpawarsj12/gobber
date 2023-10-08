@@ -45,12 +45,14 @@ func ExtractTar(tarball_url *string, packageDestDir *string) {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			dirPath := filepath.Join(*packageDestDir, header.Name)
-			if err := os.Mkdir(dirPath, 0755); err != nil {
-				log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
+			if header.Name != "." {
+				dirPath := filepath.Join(*packageDestDir, header.Name)
+				if err := os.Mkdir(dirPath, 0755); err != nil {
+					log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
+				}
 			}
 		case tar.TypeReg:
-			outFilePath := filepath.Join(*packageDestDir, header.Name)
+			outFilePath := filepath.Join(*packageDestDir, filepath.Base(header.Name))
 			if err := os.MkdirAll(filepath.Dir(outFilePath), 0755); err != nil {
 				log.Fatalf("ExtractTarGz: MkdirAll() failed: %s", err.Error())
 			}

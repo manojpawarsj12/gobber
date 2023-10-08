@@ -67,6 +67,6 @@ func NpmGetBytes(route string) (io.ReadCloser, error) {
 		log.Println("Error making HTTP request in NpmGetBytes: %v", err)
 		return nil, err
 	}
-	log.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
+	//log.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
 	return resp.Body, nil
 }
