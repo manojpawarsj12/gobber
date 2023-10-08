@@ -7,19 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 )
-
-var wgTar sync.WaitGroup
-
-func Extract(tarball_url *string, packageDestDir *string) {
-	wgTar.Add(1)
-	go func() {
-		defer wgTar.Done()
-		ExtractTar(tarball_url, packageDestDir)
-	}()
-	wgTar.Wait()
-}
 
 func ExtractTar(tarball_url *string, packageDestDir *string) {
 	tarRes, err := NpmGetBytes(*tarball_url)

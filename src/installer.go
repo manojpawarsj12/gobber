@@ -57,7 +57,7 @@ func ancestorInstalled(name string, projectDir string, InstalledVersionsMutex *m
 
 	return false
 }
-func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, wg *sync.WaitGroup, mut *sync.Mutex) {
+func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex, wg *sync.WaitGroup) {
 	defer wg.Done()
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex, mut) {
 		log.Printf("Installed %s \n", packageData.Name)
@@ -76,27 +76,44 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 		log.Printf("InstallPackage: Mkdir() failed: %s", err.Error())
 	}
 
-	// Extract the tarball to the package directory
-	tarballUrl := packageData.Dist.Tarball
-	go Extract(&tarballUrl, &packageDestDir)
+	extractionDone := make(chan struct{})
 
-	mut.Lock()
-	(*InstalledVersionsMutex)[packageData.Name] = packageData.Version
-	mut.Unlock()
+	go func() {
+		defer close(extractionDone)
+
+		// Extract the tarball to the package directory
+		tarballUrl := packageData.Dist.Tarball
+		ExtractTar(&tarballUrl, &packageDestDir)
+
+		mut.Lock()
+		(*InstalledVersionsMutex)[packageData.Name] = packageData.Version
+		mut.Unlock()
+	}()
+	var depWG sync.WaitGroup
 
 	deps := packageData.Dependencies
 	log.Println("Deps for installing packages !!! ", packageData.Name, deps)
+
 	for name, version := range deps {
 		comparator, err := v.parseSemanticVersion(version)
 		if err != nil {
 			log.Fatalf("Error InstallPackage parsing semantic version: %v", err)
 		}
-		packageDetails := PackageDetails{Name: name, Comparator: comparator}
-		packageData := GetPackageData(&packageDetails)
-		// Install dependencies recursively inside the packageDestDir
-		wg.Add(1)
-		go InstallPackage(packageData, InstalledVersionsMutex, packageDestDir, wg, mut)
+		depWG.Add(1)
+		go func(name, version string) {
+			defer depWG.Done()
+			packageDetails := PackageDetails{Name: name, Comparator: comparator}
+			depPackageData := GetPackageData(&packageDetails)
+			// Install dependencies recursively inside the packageDestDir
+			wg.Add(1)
+			InstallPackage(depPackageData, InstalledVersionsMutex, packageDestDir, mut, wg)
+		}(name, version)
 	}
+	// Wait for dependency installation to complete
+	depWG.Wait()
+
+	// Wait for tarball extraction to complete
+	<-extractionDone
 }
 
 func Parse(packageData string) (*PackageDetails, error) {
@@ -109,14 +126,13 @@ func Parse(packageData string) (*PackageDetails, error) {
 }
 func Execute(packageDetails *PackageDetails) {
 	start := time.Now()
-	var wg sync.WaitGroup
 	var mut sync.Mutex
+	var wg sync.WaitGroup
 	var InstalledVersionsMutex = make(map[string]string)
 	wd, _ := os.Getwd()
-
 	packageData := GetPackageData(packageDetails)
 	wg.Add(1)
-	go InstallPackage(packageData, &InstalledVersionsMutex, wd, &wg, &mut)
+	go InstallPackage(packageData, &InstalledVersionsMutex, wd, &mut, &wg)
 	wg.Wait()
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
