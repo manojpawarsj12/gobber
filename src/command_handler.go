@@ -24,19 +24,23 @@ func ParseCommands() {
 
 func installPackage(packageNames []string) {
 	log.Printf("Installing packages: %s\n", packageNames)
-	var wg sync.WaitGroup
 	start := time.Now()
 	var mut sync.Mutex
 	var InstalledVersionsMutex = make(map[string]string)
 	wd, _ := os.Getwd()
+	done := make(chan bool, len(packageNames))
 	for _, packageName := range packageNames {
-		wg.Add(1)
 		packageDetail, _ := Parse(packageName)
-		go Execute(packageDetail, &wg, &mut, &InstalledVersionsMutex, wd)
+		go func() {
+			Execute(packageDetail, &mut, &InstalledVersionsMutex, wd)
+			done <- true
+		}()
 	}
-	wg.Wait()
+	for range packageNames {
+		<-done
+	}
+	close(done)
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
-	log.Println("Installed total packages: ", len(InstalledVersionsMutex))
-	// npmVersionData, _ := NpmRegistryVersionData(&packageName)}
+	log.Println("Installed total packages: ", InstalledVersionsMutex, len(InstalledVersionsMutex))
 }

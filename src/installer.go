@@ -56,7 +56,7 @@ func ancestorInstalled(name string, projectDir string, InstalledVersionsMutex *m
 
 	return false
 }
-func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex) {
+func InstallPackageRecursive(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex) {
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex, mut) {
 		log.Printf("Installed %s \n", packageData.Name)
 		return
@@ -87,8 +87,7 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 		(*InstalledVersionsMutex)[packageData.Name] = packageData.Version
 		mut.Unlock()
 	}()
-	var depWG sync.WaitGroup
-
+	done := make(chan bool)
 	deps := packageData.Dependencies
 	log.Println("Deps for installing packages !!! ", packageData.Name, deps)
 
@@ -97,17 +96,19 @@ func InstallPackage(packageData PackageData, InstalledVersionsMutex *map[string]
 		if err != nil {
 			log.Fatalf("Error InstallPackage parsing semantic version: %v", err)
 		}
-		depWG.Add(1)
 		go func(name, version string) {
-			defer depWG.Done()
 			packageDetails := PackageDetails{Name: name, Comparator: comparator}
 			depPackageData := GetPackageData(&packageDetails)
 			// Install dependencies recursively inside the packageDestDir
-			InstallPackage(depPackageData, InstalledVersionsMutex, packageDestDir, mut)
+			InstallPackageRecursive(depPackageData, InstalledVersionsMutex, packageDestDir, mut)
+			done <- true
 		}(name, version)
 	}
-	// Wait for dependency installation to complete
-	depWG.Wait()
+
+	for range deps {
+		// Wait for InstallPackageRecursive to complete
+		<-done
+	}
 
 	// Wait for tarball extraction to complete
 	<-extractionDone
@@ -121,8 +122,14 @@ func Parse(packageData string) (*PackageDetails, error) {
 	}
 	return packageDetails, nil
 }
-func Execute(packageDetails *PackageDetails, wg *sync.WaitGroup, mut *sync.Mutex, InstalledVersionsMutex *map[string]string, projectDir string) {
-	defer wg.Done()
-	packageData := GetPackageData(packageDetails)
-	InstallPackage(packageData, InstalledVersionsMutex, projectDir, mut)
+func Execute(packageDetails *PackageDetails, mut *sync.Mutex, InstalledVersionsMutex *map[string]string, projectDir string) {
+	done := make(chan bool)
+
+	go func() {
+		packageData := GetPackageData(packageDetails)
+		InstallPackageRecursive(packageData, InstalledVersionsMutex, projectDir, mut)
+		done <- true
+	}()
+
+	<-done
 }
