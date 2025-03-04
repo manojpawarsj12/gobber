@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 )
@@ -24,15 +23,14 @@ var client = &http.Client{
 func NpmRegistry(packageName *string) (PackageData, error) {
 	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s/%s", NPM_REGISTRY, *packageName, "latest"))
 	if err != nil {
-		log.Println("Error in NpmRegistry: %v", err)
 		return PackageData{}, err
 	}
+	defer respBody.Close()
 
 	var packageData PackageData
 	err = json.NewDecoder(respBody).Decode(&packageData)
 	if err != nil {
-		log.Println("Error decoding JSON in NpmRegistry: %v", err.Error())
-		return PackageData{}, err
+		return PackageData{}, fmt.Errorf("error decoding package data: %v", err)
 	}
 
 	return packageData, nil
@@ -41,15 +39,14 @@ func NpmRegistry(packageName *string) (PackageData, error) {
 func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
 	respBody, err := NpmGetBytes(fmt.Sprintf("%s/%s", NPM_REGISTRY, *packageName))
 	if err != nil {
-		log.Printf("Error in NpmRegistryVersionData: %v", err)
 		return VersionsData{}, err
 	}
+	defer respBody.Close()
 
 	var versionsData VersionsData
 	err = json.NewDecoder(respBody).Decode(&versionsData)
 	if err != nil {
-		log.Printf("Error decoding JSON in NpmRegistryVersionData: %v", err)
-		return VersionsData{}, err
+		return VersionsData{}, fmt.Errorf("error decoding versions data: %v", err)
 	}
 
 	return versionsData, nil
@@ -58,15 +55,15 @@ func NpmRegistryVersionData(packageName *string) (VersionsData, error) {
 func NpmGetBytes(route string) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, route, nil)
 	if err != nil {
-		log.Println("Error creating HTTP request in NpmGetBytes: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 	req.Header.Add("Accept", "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("Error making HTTP request in NpmGetBytes: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("error making request: %v", err)
 	}
-	//log.Printf("Response code for route %s is %d\n", route, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 	return resp.Body, nil
 }

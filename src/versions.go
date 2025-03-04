@@ -48,6 +48,9 @@ func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) strin
 	}
 
 	constraint := (*semanticVersion).String()
+	if len(constraint) < 3 {
+		return latest
+	}
 	parts := strings.Split(constraint, ".")
 	major := parts[0]
 	minor := parts[1]
@@ -65,7 +68,7 @@ func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) strin
 
 func (v *Versions) resolvePartialVersion(semanticVersion *semver.Constraints, availableVersions map[string]PackageData) (string, error) {
 	if semanticVersion == nil {
-		return "", fmt.Errorf("Semantic version is nil")
+		return "", fmt.Errorf("semantic version is nil")
 	}
 
 	var versions []*semver.Version
@@ -82,7 +85,7 @@ func (v *Versions) resolvePartialVersion(semanticVersion *semver.Constraints, av
 		}
 	}
 
-	return "", fmt.Errorf("Invalid version")
+	return "", fmt.Errorf("invalid version")
 }
 func (v *Versions) toString(major string, minor string, patch string) string {
 	return fmt.Sprintf("%s.%s.%s", major, minor, patch)

@@ -29,6 +29,7 @@ func installPackage(packageNames []string) {
 	var InstalledVersionsMutex = make(map[string]string)
 	wd, _ := os.Getwd()
 	done := make(chan bool, len(packageNames))
+	defer close(done)
 	for _, packageName := range packageNames {
 		packageDetail, _ := Parse(packageName)
 		go func() {
@@ -39,7 +40,6 @@ func installPackage(packageNames []string) {
 	for range packageNames {
 		<-done
 	}
-	close(done)
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
 	log.Println("Installed total packages: ", InstalledVersionsMutex, len(InstalledVersionsMutex))

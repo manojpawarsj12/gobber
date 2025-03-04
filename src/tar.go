@@ -3,21 +3,21 @@ package gobber
 import (
 	"archive/tar"
 	"compress/gzip"
+	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 )
 
-func ExtractTar(tarball_url *string, packageDestDir *string) {
+func ExtractTar(tarball_url *string, packageDestDir *string) error {
 	tarRes, err := NpmGetBytes(*tarball_url)
 	if err != nil {
-		log.Fatalf("Error ExtractTar requesting tar url: %v", err)
+		return fmt.Errorf("error requesting tar url: %v", err)
 	}
 
 	uncompressedStream, err := gzip.NewReader(tarRes)
 	if err != nil {
-		log.Fatalf("Error ExtractTarGz: NewReader failed: %v", err)
+		return fmt.Errorf("error creating gzip reader: %v", err)
 	}
 	tarReader := tar.NewReader(uncompressedStream)
 
@@ -29,37 +29,34 @@ func ExtractTar(tarball_url *string, packageDestDir *string) {
 		}
 
 		if err != nil {
-			log.Fatalf("Error ExtractTarGz:  Next() failed: %v", err)
+			return fmt.Errorf("error reading tar header: %v", err)
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if header.Name != "." {
 				dirPath := filepath.Join(*packageDestDir, header.Name)
 				if err := os.Mkdir(dirPath, 0755); err != nil {
-					log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
+					return fmt.Errorf("mkdir failed: %v", err)
 				}
 			}
 		case tar.TypeReg:
 			outFilePath := filepath.Join(*packageDestDir, filepath.Base(header.Name))
 			if err := os.MkdirAll(filepath.Dir(outFilePath), 0755); err != nil {
-				log.Fatalf("ExtractTarGz: MkdirAll() failed: %s", err.Error())
+				return fmt.Errorf("mkdirall failed: %v", err)
 			}
 			outFile, err := os.Create(outFilePath)
 			if err != nil {
-				log.Fatalf("ExtractTarGz: Create() failed: %s", err.Error())
+				return fmt.Errorf("create file failed: %v", err)
 			}
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				log.Fatalf("ExtractTarGz: Copy() failed: %s", err.Error())
+				return fmt.Errorf("copy file failed: %v", err)
 			}
 			outFile.Close()
-
+		case tar.TypeXGlobalHeader:
+			// Ignore the pax_global_header
 		default:
-			log.Fatalf(
-				"ExtractTarGz: uknown type: %s in %s",
-				header.Typeflag,
-				header.Name)
+			return fmt.Errorf("unknown type: %c in %s", header.Typeflag, header.Name)
 		}
-
 	}
-
+	return nil
 }
