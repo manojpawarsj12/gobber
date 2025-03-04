@@ -1,4 +1,4 @@
-package gobber
+package internal
 
 type PackageData struct {
 	Name         string            `json:"name"`

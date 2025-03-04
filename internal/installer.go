@@ -1,4 +1,4 @@
-package gobber
+package internal
 
 import (
 	"fmt"
@@ -35,13 +35,11 @@ func ancestorInstalled(name string, projectDir string, InstalledVersionsMutex *m
 
 func InstallPackageRecursive(packageData PackageData, InstalledVersionsMutex *map[string]string, projectDir string, mut *sync.Mutex) error {
 	if checkIsInstalled(packageData.Name, packageData.Version, InstalledVersionsMutex, mut) {
-		log.Printf("Installed %s \n", packageData.Name)
 		return nil
 	}
-	log.Println("installing !!!!!", packageData.Name,packageData.Version)
+	log.Println("installing !!!!!", packageData.Name, packageData.Version)
 
 	if ancestorInstalled(packageData.Name, projectDir, InstalledVersionsMutex, mut) {
-		log.Printf("%s is already installed at an ancestor node_modules folder\n", packageData.Name)
 		return nil
 	}
 
@@ -59,7 +57,6 @@ func InstallPackageRecursive(packageData PackageData, InstalledVersionsMutex *ma
 		// Extract the tarball to the package directory
 		tarballUrl := packageData.Dist.Tarball
 		if err := ExtractTar(&tarballUrl, &packageDestDir); err != nil {
-			log.Printf("error extracting tarball: %v", err)
 		}
 
 		mut.Lock()
@@ -68,7 +65,6 @@ func InstallPackageRecursive(packageData PackageData, InstalledVersionsMutex *ma
 	}()
 	done := make(chan bool)
 	deps := packageData.Dependencies
-	log.Println("Deps for installing packages !!! ", packageData.Name, deps)
 
 	for name, version := range deps {
 		comparator, err := v.parseSemanticVersion(version)
@@ -79,13 +75,11 @@ func InstallPackageRecursive(packageData PackageData, InstalledVersionsMutex *ma
 			packageDetails := PackageDetails{Name: name, Comparator: comparator}
 			depPackageData, err := GetPackageData(&packageDetails)
 			if err != nil {
-				log.Printf("error getting package data: %v", err)
 				done <- false
 				return
 			}
 			// Install dependencies recursively inside the packageDestDir
 			if err := InstallPackageRecursive(depPackageData, InstalledVersionsMutex, packageDestDir, mut); err != nil {
-				log.Printf("error installing package recursively: %v", err)
 				done <- false
 				return
 			}
@@ -111,12 +105,10 @@ func Execute(packageDetails *PackageDetails, mut *sync.Mutex, InstalledVersionsM
 	go func() {
 		packageData, err := GetPackageData(packageDetails)
 		if err != nil {
-			log.Printf("error getting package data: %v", err)
 			done <- false
 			return
 		}
 		if err := InstallPackageRecursive(packageData, InstalledVersionsMutex, projectDir, mut); err != nil {
-			log.Printf("error installing package recursively: %v", err)
 			done <- false
 			return
 		}

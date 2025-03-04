@@ -1,4 +1,4 @@
-package gobber
+package internal
 
 import (
 	"fmt"
