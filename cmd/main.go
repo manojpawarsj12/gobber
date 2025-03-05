@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -8,6 +9,16 @@ import (
 
 	gobber "github.com/manojpawarsj12/gobber/internal"
 	"github.com/urfave/cli/v2"
+)
+
+const (
+	maxConcurrentRequests = 10               // Limit concurrent requests
+	requestDelay          = 1 * time.Second // Delay between requests
+)
+
+var (
+	requestSemaphore = make(chan struct{}, maxConcurrentRequests)
+	rateLimiter      = time.Tick(requestDelay)
 )
 
 func main() {
@@ -52,28 +63,44 @@ func InstallCommand(c *cli.Context) error {
 func installPackage(packageNames []string) error {
 	log.Printf("Installing packages: %s\n", packageNames)
 	start := time.Now()
-	var mut sync.Mutex
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(packageNames))
 	installedVersions := make(map[string]string)
+	var mut sync.Mutex
 	wd, _ := os.Getwd()
-	done := make(chan error, len(packageNames))
 
 	for _, packageName := range packageNames {
-		packageDetail, err := gobber.Parse(packageName)
-		if err != nil {
-			return err
-		}
-		go func(packageDetail *gobber.PackageDetails) {
-			err := gobber.Execute(packageDetail, &mut, &installedVersions, wd)
-			done <- err
-		}(packageDetail)
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			<-rateLimiter
+			requestSemaphore <- struct{}{}
+			defer func() { <-requestSemaphore }()
+
+			packageDetail, err := gobber.Parse(name)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			err = gobber.Execute(packageDetail, &mut, &installedVersions, wd)
+			if err != nil {
+				errChan <- fmt.Errorf("package %s: %w", name, err)
+			}
+		}(packageName)
 	}
 
-	for range packageNames {
-		if err := <-done; err != nil {
-			return err
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		if err != nil {
+			log.Printf("Installation error: %v", err)
+			return cli.Exit("Installation failed", 1)
 		}
 	}
-	close(done)
 
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)

@@ -18,6 +18,8 @@ type PackageDetails struct {
 type Versions struct{}
 
 func (v *Versions) parseSemanticVersion(rawVersion string) (*semver.Constraints, error) {
+	rawVersion = strings.TrimPrefix(rawVersion, "npm:")
+	rawVersion = strings.TrimPrefix(rawVersion, "@")
 	version, err := semver.NewConstraint(rawVersion)
 	if err != nil {
 		return nil, err
