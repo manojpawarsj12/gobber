@@ -1,8 +1,11 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"os"
 )
 
 var v Versions
@@ -35,4 +38,25 @@ func Parse(packageData string) (*PackageDetails, error) {
 		return nil, fmt.Errorf("error parsing package data: %v", err)
 	}
 	return packageDetails, nil
+}
+
+func ReadPackageJSON(filePath string) (*PackageData, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	byteValue, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var packageData PackageData
+	err = json.Unmarshal(byteValue, &packageData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &packageData, nil
 }

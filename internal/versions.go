@@ -26,12 +26,43 @@ func (v *Versions) parseSemanticVersion(rawVersion string) (*semver.Constraints,
 }
 
 func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) {
+	if strings.HasPrefix(details, "@") {
+		lastAtIndex := strings.LastIndex(details, "@")
+
+		if lastAtIndex == 0 {
+			return &PackageDetails{
+				Name:       details,
+				Comparator: nil,
+			}, nil
+		}
+
+		name := details[:lastAtIndex]
+		version := details[lastAtIndex+1:]
+
+		if version == latest || version == "" {
+			return &PackageDetails{
+				Name:       name,
+				Comparator: nil,
+			}, nil
+		}
+
+		comparator, err := v.parseSemanticVersion(version)
+		if err != nil {
+			return nil, err
+		}
+		return &PackageDetails{
+			Name:       name,
+			Comparator: comparator,
+		}, nil
+	}
+
 	parts := strings.Split(details, "@")
 
-	name := parts[0]
-
-	if len(parts) == 1 || parts[1] == latest {
-		return &PackageDetails{Name: name, Comparator: nil}, nil
+	if len(parts) == 1 || parts[1] == latest || parts[1] == "" {
+		return &PackageDetails{
+			Name:       parts[0],
+			Comparator: nil,
+		}, nil
 	}
 
 	comparator, err := v.parseSemanticVersion(parts[1])
@@ -39,7 +70,10 @@ func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) 
 		return nil, err
 	}
 
-	return &PackageDetails{Name: name, Comparator: comparator}, nil
+	return &PackageDetails{
+		Name:       parts[0],
+		Comparator: comparator,
+	}, nil
 }
 
 func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) string {
@@ -51,7 +85,13 @@ func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) strin
 	if len(constraint) < 3 {
 		return latest
 	}
+
+	// Handle the constraint format properly
 	parts := strings.Split(constraint, ".")
+	if len(parts) < 3 {
+		return latest
+	}
+
 	major := parts[0]
 	minor := parts[1]
 	patch := parts[2]
@@ -62,7 +102,7 @@ func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) strin
 	case "=", "~", "^":
 		return v.toString(major, minor, patch)
 	default:
-		return ""
+		return latest
 	}
 }
 
@@ -87,6 +127,7 @@ func (v *Versions) resolvePartialVersion(semanticVersion *semver.Constraints, av
 
 	return "", fmt.Errorf("invalid version")
 }
+
 func (v *Versions) toString(major string, minor string, patch string) string {
 	return fmt.Sprintf("%s.%s.%s", major, minor, patch)
 }

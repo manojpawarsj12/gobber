@@ -1,10 +1,11 @@
 package internal
 
 type PackageData struct {
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Dependencies map[string]string `json:"dependencies"`
-	Dist         Dist              `json:"dist"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+	Dist            Dist              `json:"dist"`
 }
 type Dist struct {
 	Tarball string `json:"tarball"`

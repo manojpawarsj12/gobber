@@ -33,8 +33,13 @@ func main() {
 func InstallCommand(c *cli.Context) error {
 	packageNames := c.Args().Slice()
 	if len(packageNames) == 0 {
-		log.Println("Error: Package name is required for the install command")
-		return cli.Exit("Package name is required", 1)
+		packageData, err := gobber.ReadPackageJSON("package.json")
+		if err != nil {
+			log.Printf("Error reading package.json: %v", err)
+			return cli.Exit("Failed to read package.json", 1)
+		}
+		packageNames = append(packageNames, gobber.GetMapKeys(packageData.Dependencies)...)
+		packageNames = append(packageNames, gobber.GetMapKeys(packageData.DevDependencies)...)
 	}
 	err := installPackage(packageNames)
 	if err != nil {
@@ -51,7 +56,6 @@ func installPackage(packageNames []string) error {
 	installedVersions := make(map[string]string)
 	wd, _ := os.Getwd()
 	done := make(chan error, len(packageNames))
-	defer close(done)
 
 	for _, packageName := range packageNames {
 		packageDetail, err := gobber.Parse(packageName)
@@ -69,6 +73,7 @@ func installPackage(packageNames []string) error {
 			return err
 		}
 	}
+	close(done)
 
 	elapsed := time.Since(start)
 	log.Printf("Took %s", elapsed)
