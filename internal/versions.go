@@ -20,13 +20,33 @@ type Versions struct{}
 func (v *Versions) parseSemanticVersion(rawVersion string) (*semver.Constraints, error) {
 	rawVersion = strings.TrimPrefix(rawVersion, "npm:")
 	rawVersion = strings.TrimPrefix(rawVersion, "@")
+
+	if strings.HasPrefix(rawVersion, "^") || strings.HasPrefix(rawVersion, "~") {
+		version := rawVersion[1:]
+		parts := strings.Split(version, ".")
+		if len(parts) == 1 {
+			version = fmt.Sprintf("%s.0.0", parts[0])
+		} else if len(parts) == 2 {
+			version = fmt.Sprintf("%s.%s.0", parts[0], parts[1])
+		}
+
+		if strings.HasPrefix(rawVersion, "^") {
+			rawVersion = "^" + version
+		} else {
+			rawVersion = "~" + version
+		}
+	}
+
 	version, err := semver.NewConstraint(rawVersion)
 	if err != nil {
-		return nil, err
+		fallbackVersion, fallbackErr := semver.NewConstraint("*")
+		if fallbackErr != nil {
+			return nil, err 
+		}
+		return fallbackVersion, nil
 	}
 	return version, nil
 }
-
 func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) {
 	if strings.HasPrefix(details, "@") {
 		lastAtIndex := strings.LastIndex(details, "@")
@@ -58,7 +78,7 @@ func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) 
 		}, nil
 	}
 
-	parts := strings.SplitN(details, "@", 2) 
+	parts := strings.SplitN(details, "@", 2)
 
 	if len(parts) == 1 || parts[1] == latest || parts[1] == "" {
 		return &PackageDetails{
