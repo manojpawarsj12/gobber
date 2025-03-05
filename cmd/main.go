@@ -20,14 +20,6 @@ func main() {
 				Aliases: []string{"i"},
 				Usage:   "Install packages",
 				Action:  InstallCommand,
-				Flags: []cli.Flag{
-					&cli.StringSliceFlag{
-						Name:     "package",
-						Aliases:  []string{"p"},
-						Usage:    "Package name(s) to install",
-						Required: true,
-					},
-				},
 			},
 		},
 	}
@@ -39,7 +31,7 @@ func main() {
 }
 
 func InstallCommand(c *cli.Context) error {
-	packageNames := c.StringSlice("package")
+	packageNames := c.Args().Slice()
 	if len(packageNames) == 0 {
 		log.Println("Error: Package name is required for the install command")
 		return cli.Exit("Package name is required", 1)

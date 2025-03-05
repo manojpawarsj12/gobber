@@ -4,12 +4,12 @@ Gobber is a package manager for NPM, designed to simplify the process of managin
 
 ## Installation
 
-### Using `go get`
+### Using `go install`
 
-To install Gobber directly using `go get`, run the following command:
+To install Gobber directly using `go install`, run the following command:
 
 ```sh
-go get github.com/manojpawarsj12/gobber/cmd/gobber
+go install github.com/manojpawarsj12/gobber/cmd/gobber@latest
 ```
 
 To install Gobber, clone the repository and build the project:
@@ -25,9 +25,10 @@ go build -o gobber cmd/main.go
 To use Gobber, you can run the install command to install packages. For example, to install the latest version of the express package, you can use the following command:
 
 ```sh
-./gobber install -p express@latest
+./gobber install express@latest
 ```
 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
+
