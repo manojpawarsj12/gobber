@@ -58,7 +58,7 @@ func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) 
 		}, nil
 	}
 
-	parts := strings.Split(details, "@")
+	parts := strings.SplitN(details, "@", 2) 
 
 	if len(parts) == 1 || parts[1] == latest || parts[1] == "" {
 		return &PackageDetails{
