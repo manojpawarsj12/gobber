@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	maxConcurrentRequests = 10               // Limit concurrent requests
+	maxConcurrentRequests = 10              // Limit concurrent requests
 	requestDelay          = 1 * time.Second // Delay between requests
 )
 
@@ -30,7 +30,14 @@ func main() {
 				Name:    "install",
 				Aliases: []string{"i"},
 				Usage:   "Install packages",
-				Action:  InstallCommand,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "dev",
+						Aliases: []string{"D"},
+						Usage:   "Install dev dependencies only",
+					},
+				},
+				Action: InstallCommand,
 			},
 		},
 	}
@@ -43,15 +50,24 @@ func main() {
 
 func InstallCommand(c *cli.Context) error {
 	packageNames := c.Args().Slice()
+	devOnly := c.Bool("dev")
+	
 	if len(packageNames) == 0 {
 		packageData, err := gobber.ReadPackageJSON("package.json")
 		if err != nil {
 			log.Printf("Error reading package.json: %v", err)
 			return cli.Exit("Failed to read package.json", 1)
 		}
-		packageNames = append(packageNames, gobber.GetMapKeys(packageData.Dependencies)...)
-		packageNames = append(packageNames, gobber.GetMapKeys(packageData.DevDependencies)...)
+
+		if devOnly {
+			// Only install dev dependencies
+			packageNames = append(packageNames, gobber.GetMapKeys(packageData.DevDependencies)...)
+		} else {
+			// Install regular dependencies by default
+			packageNames = append(packageNames, gobber.GetMapKeys(packageData.Dependencies)...)
+		}
 	}
+
 	err := installPackage(packageNames)
 	if err != nil {
 		log.Printf("Error installing packages: %v", err)

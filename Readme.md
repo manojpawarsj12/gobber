@@ -9,7 +9,7 @@ Gobber is a package manager for Go, designed to simplify the process of managing
 To install Gobber directly using `go install`, run the following command:
 
 ```sh
-go install github.com/manojpawarsj12/gobber/cmd/gobber@latest
+go install github.com/manojpawarsj12/gobber/cmd@latest
 ```
 
 To install Gobber, clone the repository and build the project:
@@ -36,7 +36,15 @@ You can also use the alias `i`:
 gobber i <package-names>
 ```
 
-If no package names are provided, Gobber will read from `package.json` and install the dependencies listed there.
+If no package names are provided, Gobber will read from `package.json` and install the dependencies listed there. Use the `--dev` or `-D` flag to install only dev dependencies:
+
+```sh
+gobber install --dev
+```
+
+```sh
+gobber i -D
+```
 
 ## License
 
