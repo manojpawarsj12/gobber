@@ -1,6 +1,6 @@
 # Gobber
 
-Gobber is a package manager for Go, designed to simplify the process of managing dependencies for your Go projects.
+A Node.js package manager built in Go, engineered to simplify dependency management and deliver significantly faster installation times than npm
 
 ## Installation
 
