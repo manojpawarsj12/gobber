@@ -1,5 +1,6 @@
+https://music.youtube.com/playlist?list=PLOY2CBMCElnWlWydnR8Req1CUnjhAxEGp&si=VQiZP8DvL_bPYGZV
 
-https://drive.google.com/drive/folders/1-Ar89M1T6YgwnSZiIwK2ycgrUu43oyxS
+https://music.youtube.com/playlist?list=PLOY2CBMCElnUb5Blvy6XbrlDlk6bCorTo&si=rVEN4qeGMSTYVmSb
 
 # Gobber
 
