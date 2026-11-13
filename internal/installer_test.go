@@ -228,7 +228,7 @@ func TestInstallAddSavesToPackageJSON(t *testing.T) {
 		DevDependencies map[string]string
 	}
 	readJSON(t, filepath.Join(dir, "package.json"), &pj)
-	if pj.Dependencies["b"] != "^2.0.0" || pj.Dependencies["a"] != "^1" {
+	if pj.Dependencies["b"] != "^2.0.0" || pj.Dependencies["a"] != "^1.0.0" {
 		t.Errorf("dependencies = %v", pj.Dependencies)
 	}
 
@@ -288,5 +288,58 @@ func TestInstallPlatformOptionalAndPeers(t *testing.T) {
 	// The peer links to the project's host@1.0.0, not the registry's latest 2.0.0.
 	if got := realpath(t, filepath.Join(store, "plugin@1.0.0/node_modules/host")); !strings.HasSuffix(got, "host@1.0.0/node_modules/host") {
 		t.Errorf("peer host -> %s, want project's 1.0.0", got)
+	}
+}
+
+func TestInstallPrunesExtraneous(t *testing.T) {
+	reg := defaultRegistry(t)
+	dir, store := t.TempDir(), t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "package.json"), `{"dependencies":{"a":"^1","c":"1.0.0"}}`)
+	install(t, reg, dir, store)
+
+	nmDir := filepath.Join(dir, "node_modules")
+	for _, d := range []string{".cache/tool", "stray/lib", "@s/old"} {
+		os.MkdirAll(filepath.Join(nmDir, d), 0o755)
+	}
+	writeTestFile(t, filepath.Join(dir, "package.json"), `{"dependencies":{"c":"1.0.0"}}`)
+	res := install(t, reg, dir, store)
+
+	if res.Removed != 3 {
+		t.Errorf("removed %d, want 3 (a, stray, @s/old)", res.Removed)
+	}
+	for _, gone := range []string{"a", "stray", "@s", ".bin/a"} {
+		if _, err := os.Lstat(filepath.Join(nmDir, gone)); err == nil {
+			t.Errorf("%s should have been pruned", gone)
+		}
+	}
+	for _, kept := range []string{"c", ".cache/tool"} {
+		if _, err := os.Lstat(filepath.Join(nmDir, kept)); err != nil {
+			t.Errorf("%s should be kept: %v", kept, err)
+		}
+	}
+	var lock Lockfile
+	readJSON(t, filepath.Join(dir, "package-lock.json"), &lock)
+	if lock.Packages["node_modules/a"] != nil {
+		t.Error("removed dependency still in lockfile")
+	}
+}
+
+func TestInstallDedupesToProjectVersion(t *testing.T) {
+	reg := defaultRegistry(t)
+	dir, store := t.TempDir(), t.TempDir()
+	// a wants b@^1 (highest 1.1.0), but the project pins b@1.0.0 which also fits: npm keeps one copy.
+	writeTestFile(t, filepath.Join(dir, "package.json"), `{"dependencies":{"a":"^1","b":"1.0.0"}}`)
+	res := install(t, reg, dir, store)
+
+	if got := realpath(t, filepath.Join(store, "a@1.0.0/node_modules/b")); !strings.HasSuffix(got, "b@1.0.0/node_modules/b") {
+		t.Errorf("a's b -> %s, want project's 1.0.0", got)
+	}
+	if res.Packages != 2 {
+		t.Errorf("packages = %d, want 2", res.Packages)
+	}
+	var lock Lockfile
+	readJSON(t, filepath.Join(dir, "package-lock.json"), &lock)
+	if len(lock.Packages) != 3 || lock.Packages["node_modules/b"].Version != "1.0.0" {
+		t.Errorf("lockfile not deduped: %v", sortedKeys(lock.Packages))
 	}
 }

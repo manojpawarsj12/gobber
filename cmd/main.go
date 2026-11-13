@@ -96,6 +96,6 @@ func InstallCommand(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d packages (%d downloaded) in %s\n", res.Packages, res.Downloaded, time.Since(start).Round(time.Millisecond))
+	fmt.Printf("%d packages (%d downloaded, %d removed) in %s\n", res.Packages, res.Downloaded, res.Removed, time.Since(start).Round(time.Millisecond))
 	return nil
 }
