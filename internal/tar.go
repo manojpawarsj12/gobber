@@ -36,12 +36,12 @@ func ExtractTarGz(r io.Reader, dest string) error {
 			return fmt.Errorf("tar: %w", err)
 		}
 		name := path.Clean(strings.TrimPrefix(h.Name, "./"))
+		if !filepath.IsLocal(name) {
+			return fmt.Errorf("tar: unsafe path %q", h.Name)
+		}
 		_, rel, ok := strings.Cut(name, "/")
 		if !ok || rel == "" {
 			continue
-		}
-		if !filepath.IsLocal(rel) {
-			return fmt.Errorf("tar: unsafe path %q", h.Name)
 		}
 		p := filepath.Join(dest, rel)
 		switch h.Typeflag {
