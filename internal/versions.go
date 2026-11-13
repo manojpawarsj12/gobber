@@ -2,154 +2,136 @@ package internal
 
 import (
 	"fmt"
-	"sort"
+	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
 
-const latest = "latest"
-
-type PackageDetails struct {
-	Name       string
-	Comparator *semver.Constraints
-}
-
-type Versions struct{}
-
-func (v *Versions) parseSemanticVersion(rawVersion string) (*semver.Constraints, error) {
-	rawVersion = strings.TrimPrefix(rawVersion, "npm:")
-	rawVersion = strings.TrimPrefix(rawVersion, "@")
-
-	if strings.HasPrefix(rawVersion, "^") || strings.HasPrefix(rawVersion, "~") {
-		version := rawVersion[1:]
-		parts := strings.Split(version, ".")
-		if len(parts) == 1 {
-			version = fmt.Sprintf("%s.0.0", parts[0])
-		} else if len(parts) == 2 {
-			version = fmt.Sprintf("%s.%s.0", parts[0], parts[1])
-		}
-
-		if strings.HasPrefix(rawVersion, "^") {
-			rawVersion = "^" + version
-		} else {
-			rawVersion = "~" + version
+// ParseArg splits "react@^18", "@types/node@20" or "alias@npm:real@1" into name and spec.
+func ParseArg(arg string) (name, spec string) {
+	if len(arg) > 1 {
+		if i := strings.Index(arg[1:], "@"); i >= 0 {
+			return arg[:i+1], arg[i+2:]
 		}
 	}
+	return arg, ""
+}
 
-	version, err := semver.NewConstraint(rawVersion)
+// Names end up in filesystem paths, so they are validated (no "..", no separators beyond the scope).
+var nameRe = regexp.MustCompile(`^(?:@[A-Za-z0-9~-][\w.~-]*/)?[A-Za-z0-9~-][\w.~-]*$`)
+
+func validName(name string) bool { return nameRe.MatchString(name) }
+
+// saveSpec is what gets written to package.json for an added package.
+func saveSpec(spec, version string) string {
+	if strings.HasPrefix(spec, "npm:") {
+		return spec
+	}
+	if spec != "" {
+		if _, err := semver.NewConstraint(spec); err == nil {
+			return spec
+		}
+	}
+	return "^" + version
+}
+
+// pickVersion chooses like npm: a dist-tag wins, then "latest" if it satisfies, then the highest match.
+func pickVersion(p *Packument, spec string) (string, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		spec = "latest"
+	}
+	if v, ok := p.DistTags[spec]; ok {
+		if _, ok := p.Versions[v]; ok {
+			return v, nil
+		}
+	}
+	c, err := semver.NewConstraint(spec)
 	if err != nil {
-		fallbackVersion, fallbackErr := semver.NewConstraint("*")
-		if fallbackErr != nil {
-			return nil, err 
+		return "", fmt.Errorf("unsupported version spec %q (git, file and url specs are not supported)", spec)
+	}
+	if l, ok := p.DistTags["latest"]; ok {
+		if _, ok := p.Versions[l]; ok && satisfies(c, l) {
+			return l, nil
 		}
-		return fallbackVersion, nil
 	}
-	return version, nil
-}
-func (v *Versions) parsePackageDetails(details string) (*PackageDetails, error) {
-	if strings.HasPrefix(details, "@") {
-		lastAtIndex := strings.LastIndex(details, "@")
-
-		if lastAtIndex == 0 {
-			return &PackageDetails{
-				Name:       details,
-				Comparator: nil,
-			}, nil
-		}
-
-		name := details[:lastAtIndex]
-		version := details[lastAtIndex+1:]
-
-		if version == latest || version == "" {
-			return &PackageDetails{
-				Name:       name,
-				Comparator: nil,
-			}, nil
-		}
-
-		comparator, err := v.parseSemanticVersion(version)
-		if err != nil {
-			return nil, err
-		}
-		return &PackageDetails{
-			Name:       name,
-			Comparator: comparator,
-		}, nil
-	}
-
-	parts := strings.SplitN(details, "@", 2)
-
-	if len(parts) == 1 || parts[1] == latest || parts[1] == "" {
-		return &PackageDetails{
-			Name:       parts[0],
-			Comparator: nil,
-		}, nil
-	}
-
-	comparator, err := v.parseSemanticVersion(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	return &PackageDetails{
-		Name:       parts[0],
-		Comparator: comparator,
-	}, nil
-}
-
-func (v *Versions) resolveFullVersion(semanticVersion *semver.Constraints) string {
-	if semanticVersion == nil {
-		return latest
-	}
-
-	constraint := (*semanticVersion).String()
-	if len(constraint) < 3 {
-		return latest
-	}
-
-	// Handle the constraint format properly
-	parts := strings.Split(constraint, ".")
-	if len(parts) < 3 {
-		return latest
-	}
-
-	major := parts[0]
-	minor := parts[1]
-	patch := parts[2]
-
-	switch string(constraint[0]) {
-	case ">":
-		return fmt.Sprintf(">%s.%s.%s", major, minor, patch)
-	case "=", "~", "^":
-		return v.toString(major, minor, patch)
-	default:
-		return latest
-	}
-}
-
-func (v *Versions) resolvePartialVersion(semanticVersion *semver.Constraints, availableVersions map[string]PackageData) (string, error) {
-	if semanticVersion == nil {
-		return "", fmt.Errorf("semantic version is nil")
-	}
-
-	var versions []*semver.Version
-	for version := range availableVersions {
-		v, _ := semver.NewVersion(version)
+	versions := make([]string, 0, len(p.Versions))
+	for v := range p.Versions {
 		versions = append(versions, v)
 	}
-	sort.Sort(semver.Collection(versions))
-	for i := len(versions) - 1; i >= 0; i-- {
-		version := versions[i]
-
-		if (*semanticVersion).Check(version) {
-			return version.String(), nil
-		}
+	if v := highest(c, versions); v != "" {
+		return v, nil
 	}
-
-	return "", fmt.Errorf("invalid version")
+	return "", fmt.Errorf("no version of %s matches %q", p.Name, spec)
 }
 
-func (v *Versions) toString(major string, minor string, patch string) string {
-	return fmt.Sprintf("%s.%s.%s", major, minor, patch)
+// pickLocked returns the highest lockfile entry satisfying spec. Dist-tags never match the lockfile.
+func pickLocked(cands []Manifest, spec string) (Manifest, bool) {
+	c, err := semver.NewConstraint(spec)
+	if err != nil || len(cands) == 0 {
+		return Manifest{}, false
+	}
+	versions := make([]string, len(cands))
+	for i, m := range cands {
+		versions[i] = m.Version
+	}
+	best := highest(c, versions)
+	for _, m := range cands {
+		if m.Version == best && best != "" {
+			return m, true
+		}
+	}
+	return Manifest{}, false
+}
+
+func highest(c *semver.Constraints, versions []string) string {
+	var best *semver.Version
+	bestRaw := ""
+	for _, raw := range versions {
+		v, err := semver.NewVersion(raw)
+		if err != nil || !c.Check(v) {
+			continue
+		}
+		if best == nil || v.GreaterThan(best) {
+			best, bestRaw = v, raw
+		}
+	}
+	return bestRaw
+}
+
+func satisfies(c *semver.Constraints, version string) bool {
+	v, err := semver.NewVersion(version)
+	return err == nil && c.Check(v)
+}
+
+// platformOK applies the package's "os"/"cpu" fields (with "!" negation) using node's names.
+func platformOK(m *Manifest) bool {
+	os, arch := runtime.GOOS, runtime.GOARCH
+	if os == "windows" {
+		os = "win32"
+	}
+	switch arch {
+	case "amd64":
+		arch = "x64"
+	case "386":
+		arch = "ia32"
+	}
+	return allowed(m.OS, os) && allowed(m.CPU, arch)
+}
+
+func allowed(list []string, v string) bool {
+	match, positive := false, false
+	for _, x := range list {
+		if strings.HasPrefix(x, "!") {
+			if x[1:] == v {
+				return false
+			}
+			continue
+		}
+		positive = true
+		match = match || x == v
+	}
+	return match || !positive
 }
