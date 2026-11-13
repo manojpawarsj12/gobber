@@ -2,124 +2,100 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"sync"
+	"path/filepath"
 	"time"
 
 	gobber "github.com/manojpawarsj12/gobber/internal"
 	"github.com/urfave/cli/v2"
 )
 
-const (
-	maxConcurrentRequests = 10              // Limit concurrent requests
-	requestDelay          = 1 * time.Second // Delay between requests
-)
-
-var (
-	requestSemaphore = make(chan struct{}, maxConcurrentRequests)
-	rateLimiter      = time.Tick(requestDelay)
-)
-
 func main() {
 	app := &cli.App{
 		Name:  "gobber",
-		Usage: "A package manager for Go",
+		Usage: "a fast, npm-compatible package installer",
 		Commands: []*cli.Command{
 			{
-				Name:    "install",
-				Aliases: []string{"i"},
-				Usage:   "Install packages",
+				Name:      "install",
+				Aliases:   []string{"i", "add"},
+				Usage:     "install package.json dependencies, or add packages",
+				ArgsUsage: "[package[@spec] ...]",
 				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:    "dev",
-						Aliases: []string{"D"},
-						Usage:   "Install dev dependencies only",
-					},
+					&cli.BoolFlag{Name: "save-dev", Aliases: []string{"D", "dev"}, Usage: "save added packages to devDependencies"},
+					&cli.BoolFlag{Name: "production", Aliases: []string{"prod"}, Usage: "skip devDependencies (lockfile is not rewritten)"},
 				},
 				Action: InstallCommand,
 			},
+			{
+				Name:  "store",
+				Usage: "print the global store path",
+				Action: func(*cli.Context) error {
+					store, err := storeDir()
+					fmt.Println(store)
+					return err
+				},
+			},
 		},
 	}
-
-	err := app.Run(os.Args)
-	if err != nil {
-		log.Fatal(err)
+	if err := app.Run(os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, "gobber:", err)
+		os.Exit(1)
 	}
+}
+
+func storeDir() (string, error) {
+	if s := os.Getenv("GOBBER_STORE"); s != "" {
+		return filepath.Abs(s)
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, "gobber", "store"), nil
 }
 
 func InstallCommand(c *cli.Context) error {
-	packageNames := c.Args().Slice()
-	devOnly := c.Bool("dev")
-	
-	if len(packageNames) == 0 {
-		packageData, err := gobber.ReadPackageJSON("package.json")
-		if err != nil {
-			log.Printf("Error reading package.json: %v", err)
-			return cli.Exit("Failed to read package.json", 1)
-		}
-
-		if devOnly {
-			// Only install dev dependencies
-			packageNames = append(packageNames, gobber.GetMapKeys(packageData.DevDependencies)...)
-		} else {
-			// Install regular dependencies by default
-			packageNames = append(packageNames, gobber.GetMapKeys(packageData.Dependencies)...)
-		}
-	}
-
-	err := installPackage(packageNames)
+	dir, err := os.Getwd()
 	if err != nil {
-		log.Printf("Error installing packages: %v", err)
-		return cli.Exit("Installation failed", 1)
+		return err
 	}
-	return nil
-}
-
-func installPackage(packageNames []string) error {
-	log.Printf("Installing packages: %s\n", packageNames)
-	start := time.Now()
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(packageNames))
-	installedVersions := make(map[string]string)
-	var mut sync.Mutex
-	wd, _ := os.Getwd()
-
-	for _, packageName := range packageNames {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			<-rateLimiter
-			requestSemaphore <- struct{}{}
-			defer func() { <-requestSemaphore }()
-
-			packageDetail, err := gobber.Parse(name)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			err = gobber.Execute(packageDetail, &mut, &installedVersions, wd)
-			if err != nil {
-				errChan <- fmt.Errorf("package %s: %w", name, err)
-			}
-		}(packageName)
+	store, err := storeDir()
+	if err != nil {
+		return err
 	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	for err := range errChan {
-		if err != nil {
-			log.Printf("Installation error: %v", err)
-			return cli.Exit("Installation failed", 1)
+	registry := os.Getenv("GOBBER_REGISTRY")
+	if registry == "" {
+		registry = gobber.DefaultRegistry
+	}
+	// urfave/cli stops at the first positional arg; accept npm-style trailing flags too.
+	saveDev, production := c.Bool("save-dev"), c.Bool("production")
+	var args []string
+	for _, a := range c.Args().Slice() {
+		switch a {
+		case "-D", "--save-dev", "--dev":
+			saveDev = true
+		case "--production", "--prod":
+			production = true
+		default:
+			if len(a) > 1 && a[0] == '-' {
+				return fmt.Errorf("unknown flag %s", a)
+			}
+			args = append(args, a)
 		}
 	}
-
-	elapsed := time.Since(start)
-	log.Printf("Took %s", elapsed)
-	log.Printf("Installed total packages: %d", len(installedVersions))
+	start := time.Now()
+	res, err := gobber.Install(gobber.Options{
+		Dir:         dir,
+		Store:       store,
+		Registry:    registry,
+		Args:        args,
+		SaveDev:     saveDev,
+		Production:  production,
+		Concurrency: 50,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%d packages (%d downloaded) in %s\n", res.Packages, res.Downloaded, time.Since(start).Round(time.Millisecond))
 	return nil
 }
