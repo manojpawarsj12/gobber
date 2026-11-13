@@ -1,7 +1,3 @@
-https://music.youtube.com/playlist?list=PLOY2CBMCElnWlWydnR8Req1CUnjhAxEGp&si=VQiZP8DvL_bPYGZV
-
-https://music.youtube.com/playlist?list=PLOY2CBMCElnUb5Blvy6XbrlDlk6bCorTo&si=rVEN4qeGMSTYVmSb
-
 # Gobber
 
 A fast, npm-compatible package installer for Node.js, written in Go.
