@@ -3,14 +3,13 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/Masterminds/semver/v3"
 )
 
 type Options struct {
@@ -26,6 +25,7 @@ type Options struct {
 type Result struct {
 	Packages   int
 	Downloaded int64
+	Removed    int // extraneous packages pruned from node_modules
 }
 
 // Node is one resolved name@version; Children are keyed by the name it is required as.
@@ -138,14 +138,24 @@ func Install(o Options) (*Result, error) {
 		return nil, err
 	}
 
+	dedupe(in.nodes, roots)
+
 	// 3. Link. Store entries get their deps as sibling symlinks, so Node's
 	// resolution from the real (store) path finds exactly the resolved versions.
-	installed := 0
-	for _, n := range in.nodes {
-		if n.Skip {
-			continue
+	live := map[*Node]bool{}
+	var walk func(*Node)
+	walk = func(n *Node) {
+		if !live[n] && !n.Skip {
+			live[n] = true
+			for _, c := range n.Children {
+				walk(c)
+			}
 		}
-		installed++
+	}
+	for _, r := range roots {
+		walk(r)
+	}
+	for n := range live {
 		for alias, c := range n.Children {
 			if alias == n.M.Name || c.Skip {
 				continue // self-dependency is already there; skipped platforms aren't downloaded
@@ -156,6 +166,7 @@ func Install(o Options) (*Result, error) {
 		}
 	}
 	nmDir := filepath.Join(o.Dir, "node_modules")
+	bins := map[string]bool{}
 	for alias, n := range roots {
 		if n.Skip {
 			return nil, fmt.Errorf("%s@%s is not available for this platform", n.M.Name, n.M.Version)
@@ -163,9 +174,13 @@ func Install(o Options) (*Result, error) {
 		if err := symlink(in.modulePath(n), filepath.Join(nmDir, alias)); err != nil {
 			return nil, err
 		}
-		if err := linkBins(nmDir, alias, n, in.modulePath(n)); err != nil {
+		if err := linkBins(nmDir, alias, n, in.modulePath(n), bins); err != nil {
 			return nil, err
 		}
+	}
+	removed, err := prune(nmDir, roots, bins)
+	if err != nil {
+		return nil, err
 	}
 
 	if !o.Production {
@@ -178,7 +193,7 @@ func Install(o Options) (*Result, error) {
 			return nil, err
 		}
 	}
-	return &Result{Packages: installed, Downloaded: in.downloaded.Load()}, nil
+	return &Result{Packages: len(live), Downloaded: in.downloaded.Load(), Removed: removed}, nil
 }
 
 func (in *installer) spawn(f func() error) {
@@ -242,7 +257,7 @@ func (in *installer) packument(name string) (*Packument, error) {
 
 // node dedupes name@version; a new node starts downloading immediately and resolves its deps in parallel.
 func (in *installer) node(m Manifest) (*Node, error) {
-	if _, err := semver.NewVersion(m.Version); err != nil {
+	if _, err := parseVersion(m.Version); err != nil {
 		return nil, fmt.Errorf("%s: invalid version %q", m.Name, m.Version)
 	}
 	key := m.Name + "@" + m.Version
@@ -311,7 +326,7 @@ func (in *installer) resolvePeers(roots map[string]*Node) error {
 		for _, p := range peers {
 			p := p
 			if r := roots[p.alias]; r != nil {
-				if c, err := semver.NewConstraint(p.spec); err == nil && satisfies(c, r.M.Version) {
+				if satisfies(p.spec, r.M.Version) {
 					in.mu.Lock()
 					p.parent.Children[p.alias] = r
 					in.mu.Unlock()
@@ -384,16 +399,93 @@ func symlink(target, link string) error {
 }
 
 // linkBins creates node_modules/.bin entries for a direct dependency.
-func linkBins(nmDir, alias string, n *Node, modPath string) error {
+func linkBins(nmDir, alias string, n *Node, modPath string, linked map[string]bool) error {
 	for bin, rel := range binMap(&n.M) {
 		rel = path.Clean(rel)
 		if bin == "" || strings.ContainsAny(bin, `/\`) || bin == "." || bin == ".." || !filepath.IsLocal(rel) {
 			continue
 		}
+		linked[bin] = true
 		_ = os.Chmod(filepath.Join(modPath, rel), 0o755)
 		if err := symlink(filepath.Join("..", alias, rel), filepath.Join(nmDir, ".bin", bin)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// dedupe points a dependency at the project's top-level copy when that satisfies
+// its range, as npm does when the hoisted package already fits, so there is one copy instead of two.
+func dedupe(nodes, roots map[string]*Node) {
+	for _, n := range nodes {
+		for alias, c := range n.Children {
+			r := roots[alias]
+			if r == nil || r == c || r.Skip || r.M.Name != c.M.Name {
+				continue
+			}
+			spec, ok := n.M.OptionalDependencies[alias]
+			if !ok {
+				spec, ok = n.M.Dependencies[alias]
+			}
+			if !ok {
+				spec = n.M.PeerDependencies[alias]
+			}
+			if strings.HasPrefix(spec, "npm:") {
+				_, spec = ParseArg(spec[len("npm:"):])
+			}
+			if satisfies(spec, r.M.Version) {
+				n.Children[alias] = r
+			}
+		}
+	}
+}
+
+// prune removes what npm calls extraneous: top-level packages and bins that are
+// no longer dependencies. Other dot-entries (.cache, .vite, ...) are left alone.
+func prune(nmDir string, roots map[string]*Node, bins map[string]bool) (int, error) {
+	entries, err := os.ReadDir(nmDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	remove := func(p string) error {
+		removed++
+		return os.RemoveAll(p)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		dir := filepath.Join(nmDir, name)
+		switch {
+		case name == ".bin":
+			links, _ := os.ReadDir(dir)
+			for _, l := range links {
+				if !bins[l.Name()] {
+					if err := os.RemoveAll(filepath.Join(dir, l.Name())); err != nil {
+						return removed, err
+					}
+				}
+			}
+		case strings.HasPrefix(name, "."):
+		case strings.HasPrefix(name, "@") && e.IsDir():
+			scoped, _ := os.ReadDir(dir)
+			for _, s := range scoped {
+				if roots[name+"/"+s.Name()] == nil {
+					if err := remove(filepath.Join(dir, s.Name())); err != nil {
+						return removed, err
+					}
+				}
+			}
+			if left, _ := os.ReadDir(dir); len(left) == 0 {
+				_ = os.Remove(dir)
+			}
+		case roots[name] == nil:
+			if err := remove(dir); err != nil {
+				return removed, err
+			}
+		}
+	}
+	return removed, nil
 }

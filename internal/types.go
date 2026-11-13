@@ -24,6 +24,13 @@ type Manifest struct {
 	OS                   []string            `json:"os,omitempty"`
 	CPU                  []string            `json:"cpu,omitempty"`
 	Dist                 *Dist               `json:"dist,omitempty"`
+	// Raw because some old packuments have "deprecated": false; npm doesn't keep it in the lockfile.
+	Deprecated json.RawMessage `json:"deprecated,omitempty"`
+}
+
+func (m *Manifest) deprecated() bool {
+	var s string
+	return json.Unmarshal(m.Deprecated, &s) == nil && s != ""
 }
 
 type PeerMeta struct {
@@ -66,6 +73,7 @@ func fromRegistry(m Manifest) Manifest {
 		}
 	}
 	m.Dist = nil
+	m.Deprecated = nil
 	m.DevDependencies = nil
 	bins := binMap(&m)
 	m.Bin = nil

@@ -65,8 +65,27 @@ func TestPickVersion(t *testing.T) {
 	}
 }
 
+func TestPickVersionAvoidsDeprecated(t *testing.T) {
+	dep := []byte(`"use 1.1.0"`)
+	p := &Packument{Name: "x", DistTags: map[string]string{"latest": "2.0.0"},
+		Versions: map[string]Manifest{"1.1.0": {}, "1.2.0": {Deprecated: dep}, "2.0.0": {}, "3.0.0": {Deprecated: []byte("false")}}}
+	if v, _ := pickVersion(p, "^1"); v != "1.1.0" {
+		t.Errorf("^1 picked %s, want non-deprecated 1.1.0", v)
+	}
+	p.Versions["1.1.0"] = Manifest{Deprecated: dep}
+	if v, _ := pickVersion(p, "^1"); v != "1.2.0" {
+		t.Errorf("all deprecated: picked %s, want highest 1.2.0", v)
+	}
+	if v, _ := pickVersion(p, ">=3"); v != "3.0.0" {
+		t.Errorf(`"deprecated": false must not count as deprecated, got %s`, v)
+	}
+}
+
 func TestPickLockedIgnoresTags(t *testing.T) {
 	c := []Manifest{{Version: "1.0.0"}, {Version: "1.5.0"}, {Version: "2.0.0"}}
+	if _, ok := pickLocked(c, ""); ok {
+		t.Error(`"" means latest and must go to the registry`)
+	}
 	if m, ok := pickLocked(c, "^1"); !ok || m.Version != "1.5.0" {
 		t.Errorf("got %v %v", m.Version, ok)
 	}
@@ -95,7 +114,20 @@ func TestAllowed(t *testing.T) {
 }
 
 func TestSaveSpec(t *testing.T) {
-	cases := [][3]string{{"", "1.2.3", "^1.2.3"}, {"latest", "1.2.3", "^1.2.3"}, {"~1.2", "1.2.3", "~1.2"}, {"npm:x@1", "1.0.0", "npm:x@1"}}
+	// Same outcomes as `npm install x@<spec>` writes to package.json.
+	cases := [][3]string{
+		{"", "1.2.3", "^1.2.3"},
+		{"latest", "1.2.3", "^1.2.3"},
+		{"*", "1.2.3", "^1.2.3"},
+		{"1.2.3", "1.2.3", "^1.2.3"},
+		{"4", "4.17.21", "^4.17.21"},
+		{"^18", "18.3.1", "^18.3.1"},
+		{">=1", "2.0.0", "^2.0.0"},
+		{"~1.2", "1.2.3", "~1.2"},
+		{"1.x <1.2.5", "1.2.4", "1.x <1.2.5"},
+		{"^0.2", "0.2.5", "^0.2.5"},
+		{"npm:x@1", "1.0.0", "npm:x@1"},
+	}
 	for _, c := range cases {
 		if got := saveSpec(c[0], c[1]); got != c[2] {
 			t.Errorf("saveSpec(%q) = %q, want %q", c[0], got, c[2])
